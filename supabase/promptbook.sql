@@ -402,10 +402,10 @@ create policy blocks_insert_self on public.blocks for insert with check (auth.ui
 create policy blocks_delete_self on public.blocks for delete using (auth.uid()=blocker_id);
 
 -- Storage buckets. Public read is appropriate for public PromptBook images; RLS still controls uploads/changes.
-insert into storage.buckets(id,name,public,file_size_limit,mime_types)
+insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
 values ('avatars','avatars',true,2097152,array['image/png','image/jpeg','image/webp']),
        ('post-images','post-images',true,10485760,array['image/png','image/jpeg','image/webp'])
-on conflict(id) do update set public=excluded.public,file_size_limit=excluded.file_size_limit,mime_types=excluded.mime_types;
+on conflict(id) do update set public=excluded.public,file_size_limit=excluded.file_size_limit,allowed_mime_types=excluded.allowed_mime_types;
 
 drop policy if exists storage_avatars_insert on storage.objects;
 drop policy if exists storage_avatars_update on storage.objects;

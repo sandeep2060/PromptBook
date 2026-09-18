@@ -1,4 +1,4 @@
-import type { PromptPost } from './types'
+import type { NotificationItem, PromptPost } from './types'
 import { supabase } from './lib'
 
 export async function fetchUserState(): Promise<{ liked: string[]; saved: string[]; following: string[] }> {
@@ -37,6 +37,23 @@ export async function fetchPublicPosts(): Promise<PromptPost[]> {
     const tags = (row.post_tags ?? []).map((x: any) => { const t = Array.isArray(x.tags) ? x.tags[0] : x.tags; return t?.name }).filter(Boolean)
     return { id: row.id, title: row.title, description: row.description ?? '', prompt: row.prompt, negativePrompt: row.negative_prompt ?? '', tool: tool?.name ?? 'Other', model: row.ai_model ?? '', category: category?.name ?? 'Other', tags, before: url('before'), after: url('after'), likes: Number(row.likes_count ?? 0), saves: Number(row.saves_count ?? 0), copies: Number(row.copies_count ?? 0), views: Number(row.views_count ?? 0), comments: Number(row.comments_count ?? 0), remixes: Number(row.remixes_count ?? 0), createdAt: new Date(row.created_at).toLocaleDateString(), creator: { id: profile?.id ?? '', username: profile?.username ?? 'creator', name: profile?.display_name ?? 'PromptBook Creator', avatar: (profile?.display_name ?? 'PB').slice(0,2).toUpperCase(), bio: profile?.bio ?? '', followers: Number(profile?.followers_count ?? 0), following: Number(profile?.following_count ?? 0), posts: Number(profile?.posts_count ?? 0) } }
   })
+}
+
+export async function fetchNotifications(): Promise<NotificationItem[]> {
+  if (!supabase) return []
+  const user = (await supabase.auth.getUser()).data.user
+  if (!user) return []
+  const { data, error } = await supabase.from('notifications').select('id,type,is_read,created_at,profiles:actor_id(display_name)').eq('user_id', user.id).order('created_at', { ascending: false }).limit(50)
+  if (error) throw error
+  return (data ?? []).map((row: any) => ({ id: row.id, type: row.type, text: `${row.profiles?.display_name ?? 'Someone'} interacted with your PromptBook activity.`, time: new Date(row.created_at).toLocaleDateString(), read: Boolean(row.is_read) }))
+}
+
+export async function markAllNotificationsRead(): Promise<void> {
+  if (!supabase) return
+  const user = (await supabase.auth.getUser()).data.user
+  if (!user) throw new Error('Please sign in to update notifications.')
+  const { error } = await supabase.from('notifications').update({ is_read: true }).eq('user_id', user.id).eq('is_read', false)
+  if (error) throw error
 }
 
 export async function toggleLike(postId: string, liked: boolean) {

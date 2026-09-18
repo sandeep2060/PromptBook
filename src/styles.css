@@ -160,6 +160,7 @@ kbd{border:1px solid #ddd9d1;background:#faf9f6;border-radius:5px;padding:2px 5p
 @keyframes authIn{from{opacity:0;transform:translateY(14px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
 
 .bottom-nav{display:none}
+.mobile-drawer{display:none}
 
 @media (max-width:980px){
   .desktop-nav{display:none}.mobile-menu{display:grid}.nav-actions{margin-left:auto}.nav-search{max-width:none}.avatar-button,.notification-btn{display:none}
@@ -195,6 +196,10 @@ main{margin-left:236px}.hero{min-height:520px;grid-template-columns:1.05fr .95fr
 .bottom-nav{display:none}
 @media (max-width:980px){.app-sidebar{display:none}.topbar,main{margin-left:0}.mobile-brand{display:block}.mobile-menu{display:grid}.topbar-inner{width:calc(100% - 32px);height:68px}.nav-search{margin-left:12px;max-width:none}.hero{grid-template-columns:1fr;min-height:auto;padding-top:56px}.hero-visual{min-height:410px}.container{width:min(720px,calc(100% - 40px))}.narrow{width:min(720px,calc(100% - 40px))}}
 @media (max-width:650px){.container,.narrow{width:calc(100% - 28px)}.topbar-inner{width:calc(100% - 24px);height:62px;gap:7px}.mobile-brand .brand{font-size:17px;gap:7px}.mobile-brand .brand img{width:27px}.nav-search{margin-left:0;height:38px}.nav-actions .create-btn,.nav-actions .avatar-button,.notification-btn{display:none}.hero{padding-top:38px}.hero h1{font-size:44px;letter-spacing:-.06em}.hero-copy>p{font-size:14px;line-height:1.7}.hero-visual{min-height:360px}.hero-card-main{width:96%}.before-after-mini{height:275px}.stat-strip{grid-template-columns:1fr;gap:8px;padding-bottom:34px}.stat-pill{padding:12px 14px}.creator-list{grid-template-columns:1fr 1fr}.creator-card{padding:14px}.creator-card p{font-size:9px}.section-head h2,.feature-strip h2{font-size:24px}.post-grid{columns:1}.intro-panel{padding:46px 0}.page-heading h1{font-size:34px}.auth-card{width:calc(100% - 28px);padding:24px}.auth-page:after{inset:12px}.bottom-nav{display:flex;left:12px;right:12px;bottom:12px;border-radius:13px;background:rgba(255,255,255,.96);border:1px solid var(--line);box-shadow:0 12px 30px rgba(20,25,35,.12);height:62px}.bottom-nav a{font-size:8px}.page{padding-bottom:105px}}
+.mobile-drawer.open{display:block;position:fixed;inset:0 auto 0 0;width:min(300px,86vw);padding:22px 18px;background:#fff;z-index:80;box-shadow:18px 0 45px rgba(20,25,35,.18);animation:drawerIn .2s ease both}.mobile-drawer.open:after{content:'';position:fixed;inset:0 auto 0 100%;width:calc(100vw - min(300px,86vw));background:rgba(20,25,35,.25);z-index:-1}.mobile-drawer-head{display:flex;align-items:center;justify-content:space-between;padding:0 4px 25px;font-family:var(--display);font-size:18px}.mobile-drawer nav{display:grid;gap:5px}.mobile-drawer nav a{display:flex;align-items:center;gap:12px;padding:13px 10px;border-radius:9px;color:#707782;font-size:13px;font-weight:700}.mobile-drawer nav a.active,.mobile-drawer nav a:hover{background:var(--accent-soft);color:var(--accent)}.mobile-drawer nav svg{width:17px}
+.notification-skeleton{height:64px;margin:1px 0;border-bottom:1px solid var(--line);background:linear-gradient(90deg,#f7f8fa 25%,#eef1f5 50%,#f7f8fa 75%);background-size:200% 100%;animation:skeleton 1.3s infinite}
+@keyframes drawerIn{from{transform:translateX(-18px);opacity:0}to{transform:translateX(0);opacity:1}}
+@keyframes skeleton{from{background-position:200% 0}to{background-position:-200% 0}}
 @media (prefers-reduced-motion:reduce){.hero,.auth-card,.stat-strip,.post-card{animation:none!important}.workflow-steps>div,.post-card,.creator-card{transition:none!important}}
 .profile-main{min-width:0}
 .glow.g1,.glow.g2{display:none}
