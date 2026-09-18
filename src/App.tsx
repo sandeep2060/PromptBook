@@ -159,12 +159,17 @@ function HomePage({ posts, query, toggleLike, toggleSave, copyPrompt }: PageActi
     <section className="hero container">
       <div className="hero-copy">
         <div className="eyebrow"><Sparkles size={15}/> AI prompt community</div>
-        <h1>See it. <em>Copy it.</em><br/>Build a better workflow.</h1>
-        <p>Discover prompts, study the exact technique, and remix proven AI workflows into your own creative system.</p>
+        <h1>A calmer way to <em>work with prompts.</em></h1>
+        <p>PromptBook helps you find useful prompts, understand why they work, and keep the best ideas close when you are ready to make something.</p>
         <div className="hero-actions"><Link to="/explore" className="primary-btn"><Compass size={18}/> Explore prompts</Link><Link to="/create" className="secondary-btn"><Plus size={18}/> Share a creation</Link></div>
-        <div className="hero-trust"><span><Check/> Real results</span><span><Check/> Exact prompts</span><span><Check/> Creator insights</span></div>
+        <div className="hero-trust"><span><Check/> Clear examples</span><span><Check/> Reusable prompts</span><span><Check/> Human creators</span></div>
       </div>
       <HeroVisual />
+    </section>
+
+    <section className="container intro-panel">
+      <div className="intro-copy"><span className="section-kicker">How PromptBook helps</span><h2>Keep the useful part of the experiment.</h2><p>Most prompts disappear into chat history. PromptBook gives them a home: a place to learn from other people, save what works, and share the small details that make a result repeatable.</p></div>
+      <div className="workflow-steps"><div><span>01</span><b>Find a starting point</b><p>Browse real examples instead of guessing at a blank page.</p></div><div><span>02</span><b>Understand the method</b><p>Read the exact prompt, model, notes, and before-and-after result.</p></div><div><span>03</span><b>Make it yours</b><p>Copy, save, remix, or publish a version that fits your work.</p></div></div>
     </section>
 
     <section className="container stat-strip">
@@ -201,7 +206,7 @@ function HomePage({ posts, query, toggleLike, toggleSave, copyPrompt }: PageActi
       </div>
     </section>
 
-    <section className="container feature-strip"><div><span className="section-kicker">Built for creators</span><h2>From inspiration to your next result.</h2></div><div className="feature-grid"><Feature icon={<Copy/>} title="Copy instantly" text="One tap copies the exact prompt used."/><Feature icon={<ArrowRight/>} title="Remix ideas" text="Turn someone else's workflow into your own."/><Feature icon={<BarChart3/>} title="Track results" text="See views, saves, likes and prompt copies."/></div></section>
+    <section className="container feature-strip"><div><span className="section-kicker">A better prompt habit</span><h2>Less searching. More making.</h2><p className="feature-intro">PromptBook is built for the moment after inspiration: when you want to remember what worked and use it again.</p></div><div className="feature-grid"><Feature icon={<Copy/>} title="Keep the exact wording" text="Save the prompt behind a result, not just a screenshot."/><Feature icon={<ArrowRight/>} title="Learn from the process" text="See the choices, tools, and changes behind each idea."/><Feature icon={<BarChart3/>} title="Build your own library" text="Collect the workflows you want to return to."/></div></section>
   </main>
 }
 
