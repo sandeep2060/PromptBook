@@ -32,6 +32,8 @@ function App() {
   const [toast, setToast] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const navigate = useNavigate()
+  const location = useLocation()
+  const isAuthRoute = location.pathname === '/login' || location.pathname === '/signup'
   const viewPosts = useMemo(() => state.posts.map(p => ({ ...p, liked: state.liked.includes(p.id), saved: state.saved.includes(p.id), likes: p.likes + (state.liked.includes(p.id) ? 1 : 0), saves: p.saves + (state.saved.includes(p.id) ? 1 : 0) })), [state.posts, state.liked, state.saved])
 
   useEffect(() => { localStorage.setItem(storageKey, JSON.stringify(state)) }, [state])
@@ -86,7 +88,7 @@ function App() {
   }
 
   return <>
-    <AppShell query={query} setQuery={setQuery} menuOpen={menuOpen} setMenuOpen={setMenuOpen} signOut={signOut} />
+    {!isAuthRoute && <AppShell query={query} setQuery={setQuery} menuOpen={menuOpen} setMenuOpen={setMenuOpen} signOut={signOut} />}
     <Routes>
       <Route path="/" element={<HomePage posts={viewPosts} query={query} toggleLike={toggleLike} toggleSave={toggleSave} copyPrompt={copyPrompt} />} />
       <Route path="/explore" element={<ExplorePage posts={viewPosts} query={query} setQuery={setQuery} toggleLike={toggleLike} toggleSave={toggleSave} copyPrompt={copyPrompt} />} />
@@ -102,7 +104,7 @@ function App() {
       <Route path="/signup" element={isSupabaseConfigured ? <AuthPage mode="signup" /> : <ConfigurationPage />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
-    <BottomNav />
+    {!isAuthRoute && <BottomNav />}
     {toast && <div className="toast"><Check size={16} />{toast}</div>}
   </>
 }
@@ -132,22 +134,27 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 }
 
 function AppShell({ query, setQuery, menuOpen, setMenuOpen, signOut }: { query: string; setQuery: (v: string) => void; menuOpen: boolean; setMenuOpen: (v: boolean) => void; signOut: () => void }) {
-  return <header className="topbar">
-    <div className="topbar-inner">
+  return <>
+    <aside className="app-sidebar">
       <Link to="/" className="brand"><img src="/logo-mark.svg" alt="PromptBook" /><span>Prompt<span>Book</span></span></Link>
-      <nav className="desktop-nav">
-        <NavLink to="/explore">Explore</NavLink><NavLink to="/trending">Trending</NavLink><NavLink to="/dashboard">Analytics</NavLink>
-      </nav>
-      <div className="nav-search"><Search size={17}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search prompts, creators, tags..."/><kbd>⌘ K</kbd></div>
-      <div className="nav-actions">
-        <Link className="create-btn" to="/create"><Plus size={18}/> Create</Link>
-        <Link className="icon-btn notification-btn" to="/notifications" aria-label="Notifications"><Bell size={19}/><i/></Link>
-        <button className="avatar-button" onClick={() => setMenuOpen(!menuOpen)} aria-label="Profile menu"><span>SG</span><ChevronDown size={14}/></button>
-        {menuOpen && <div className="profile-menu"><Link to="/u/sandeep"><CircleUserRound/> Profile</Link><Link to="/saved"><Bookmark/> Saved</Link><Link to="/settings"><Settings/> Settings</Link><button onClick={signOut}><LogIn/> Sign out</button></div>}
+      <div className="sidebar-group"><small>Workspace</small><NavLink to="/"><Home/> Home</NavLink><NavLink to="/explore"><Compass/> Discover</NavLink><NavLink to="/trending"><Flame/> Trending</NavLink><NavLink to="/dashboard"><BarChart3/> Analytics</NavLink></div>
+      <div className="sidebar-group"><small>Your space</small><NavLink to="/saved"><Bookmark/> Saved prompts</NavLink><NavLink to="/notifications"><Bell/> Activity</NavLink><NavLink to="/u/sandeep"><CircleUserRound/> Profile</NavLink></div>
+      <div className="sidebar-bottom"><NavLink to="/settings"><Settings/> Settings</NavLink><Link to="/create" className="sidebar-create"><Plus/> New prompt</Link></div>
+    </aside>
+    <header className="topbar">
+      <div className="topbar-inner">
+        <button className="mobile-menu icon-btn" onClick={() => setMenuOpen(!menuOpen)} aria-label="Open navigation"><Menu/></button>
+        <div className="mobile-brand"><Link to="/" className="brand"><img src="/logo-mark.svg" alt="PromptBook" /><span>Prompt<span>Book</span></span></Link></div>
+        <div className="nav-search"><Search size={17}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search prompts, creators, tags..."/><kbd>⌘ K</kbd></div>
+        <div className="nav-actions">
+          <Link className="create-btn" to="/create"><Plus size={18}/> Create</Link>
+          <Link className="icon-btn notification-btn" to="/notifications" aria-label="Notifications"><Bell size={19}/><i/></Link>
+          <button className="avatar-button" onClick={() => setMenuOpen(!menuOpen)} aria-label="Profile menu"><span>SG</span><ChevronDown size={14}/></button>
+          {menuOpen && <div className="profile-menu"><Link to="/u/sandeep"><CircleUserRound/> Profile</Link><Link to="/saved"><Bookmark/> Saved</Link><Link to="/settings"><Settings/> Settings</Link><button onClick={signOut}><LogIn/> Sign out</button></div>}
+        </div>
       </div>
-      <button className="mobile-menu icon-btn" onClick={() => setMenuOpen(!menuOpen)}><Menu/></button>
-    </div>
-  </header>
+    </header>
+  </>
 }
 
 function BottomNav() { return <nav className="bottom-nav"><NavLink to="/"><Home/><span>Home</span></NavLink><NavLink to="/explore"><Compass/><span>Explore</span></NavLink><Link to="/create" className="bottom-create"><Plus/></Link><NavLink to="/notifications"><Bell/><span>Alerts</span></NavLink><NavLink to="/u/sandeep"><CircleUserRound/><span>Profile</span></NavLink></nav> }
