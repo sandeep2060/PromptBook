@@ -231,7 +231,7 @@ create trigger comments_updated_at before update on public.comments for each row
 create or replace function public.handle_new_user() returns trigger language plpgsql security definer set search_path = public as $$
 declare base_username text; candidate text;
 begin
-  base_username := lower(regexp_replace(coalesce(new.raw_user_meta_data->>'name','creator'), '[^a-zA-Z0-9_]+', '', 'g'));
+  base_username := lower(regexp_replace(coalesce(new.raw_user_meta_data->>'display_name', new.raw_user_meta_data->>'name','creator'), '[^a-zA-Z0-9_]+', '', 'g'));
   if char_length(base_username) < 3 then base_username := 'creator'; end if;
   candidate := left(base_username, 24);
   if exists(select 1 from public.profiles where username = candidate) then candidate := left(candidate, 18) || '_' || substr(replace(new.id::text,'-',''),1,6); end if;
@@ -245,12 +245,14 @@ create trigger on_auth_user_created after insert on auth.users for each row exec
 create or replace function public.increment_post_metric(p_post_id uuid, p_metric text) returns bigint language plpgsql security definer set search_path = public as $$
 declare result bigint;
 begin
-  if p_metric not in ('views_count','copies_count','remixes_count') then raise exception 'Invalid metric'; end if;
+  if auth.uid() is null or p_metric <> 'copies_count' then raise exception 'Unauthorized metric'; end if;
+  if not exists(select 1 from public.prompt_copies where post_id = p_post_id and user_id = auth.uid()) then raise exception 'Copy event required'; end if;
   execute format('update public.posts set %I = %I + 1 where id = $1 returning %I', p_metric, p_metric, p_metric) into result using p_post_id;
   return coalesce(result,0);
 end; $$;
 
-grant execute on function public.increment_post_metric(uuid,text) to anon, authenticated;
+revoke all on function public.increment_post_metric(uuid,text) from public, anon;
+grant execute on function public.increment_post_metric(uuid,text) to authenticated;
 
 create or replace function public.handle_like_insert() returns trigger language plpgsql security definer set search_path = public as $$
 begin update public.posts set likes_count = likes_count + 1 where id = new.post_id; return new; end; $$;
@@ -341,14 +343,14 @@ create policy posts_insert_self on public.posts for insert with check (auth.uid(
 create policy posts_update_self on public.posts for update using (auth.uid()=user_id) with check (auth.uid()=user_id);
 create policy posts_delete_self on public.posts for delete using (auth.uid()=user_id);
 
-create policy post_images_select_public on public.post_images for select using (exists(select 1 from public.posts p where p.id=post_id and (p.visibility in ('public','unlisted') or p.user_id=auth.uid())));
+create policy post_images_select_public on public.post_images for select using (exists(select 1 from public.posts p where p.id=post_id and ((p.visibility in ('public','unlisted') and p.status='published') or p.user_id=auth.uid())));
 create policy post_images_insert_owner on public.post_images for insert with check (exists(select 1 from public.posts p where p.id=post_id and p.user_id=auth.uid()));
 create policy post_images_update_owner on public.post_images for update using (exists(select 1 from public.posts p where p.id=post_id and p.user_id=auth.uid()));
 create policy post_images_delete_owner on public.post_images for delete using (exists(select 1 from public.posts p where p.id=post_id and p.user_id=auth.uid()));
 
 create policy tags_select_public on public.tags for select using (true);
 create policy tags_insert_auth on public.tags for insert with check (auth.uid() is not null);
-create policy post_tags_select_public on public.post_tags for select using (exists(select 1 from public.posts p where p.id=post_id and (p.visibility in ('public','unlisted') or p.user_id=auth.uid())));
+create policy post_tags_select_public on public.post_tags for select using (exists(select 1 from public.posts p where p.id=post_id and ((p.visibility in ('public','unlisted') and p.status='published') or p.user_id=auth.uid())));
 create policy post_tags_insert_owner on public.post_tags for insert with check (exists(select 1 from public.posts p where p.id=post_id and p.user_id=auth.uid()));
 create policy post_tags_delete_owner on public.post_tags for delete using (exists(select 1 from public.posts p where p.id=post_id and p.user_id=auth.uid()));
 

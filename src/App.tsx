@@ -8,15 +8,14 @@ import {
 } from 'lucide-react'
 import type { NotificationItem, PromptPost, Sort, Tab } from './types'
 import { formatNumber, isSupabaseConfigured, supabase } from './lib'
-import { fetchPublicPosts, recordCopy, toggleFollow as dbFollow, toggleLike as dbLike, toggleSave as dbSave, createSupabasePost } from './supabaseService'
+import { fetchPublicPosts, fetchUserState, recordCopy, toggleFollow as dbFollow, toggleLike as dbLike, toggleSave as dbSave, createSupabasePost } from './supabaseService'
 
 const storageKey = 'promptbook-app-state-v1'
 
 type LocalState = { posts: PromptPost[]; liked: string[]; saved: string[]; copied: Record<string, number>; following: string[]; comments: Record<string, string[]> }
 const initialLocalState: LocalState = { posts: [], liked: [], saved: [], copied: {}, following: [], comments: {} }
-const fallbackCreator = { id: 'current-user', username: 'creator', name: 'PromptBook Creator', avatar: 'PB', bio: '', followers: 0, following: 0, posts: 0 }
-const seedCreators = [fallbackCreator]
-const seedNotifications: NotificationItem[] = []
+const localCreator = { id: 'current-user', username: 'creator', name: 'PromptBook Creator', avatar: 'PB', bio: '', followers: 0, following: 0, posts: 0 }
+const localNotifications: NotificationItem[] = []
 
 function loadState(): LocalState {
   try {
@@ -37,6 +36,25 @@ function App() {
 
   useEffect(() => { localStorage.setItem(storageKey, JSON.stringify(state)) }, [state])
   useEffect(() => { if (!isSupabaseConfigured) return; fetchPublicPosts().then(posts => setState(s => ({ ...s, posts }))).catch(() => setToast('Could not load Supabase posts')) }, [])
+  useEffect(() => {
+    if (!supabase) return
+    const hydrateUserState = async () => {
+      try {
+        const userState = await fetchUserState()
+        setState(s => ({ ...s, ...userState }))
+      } catch {
+        setToast('Could not restore your activity')
+      }
+    }
+    hydrateUserState()
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) hydrateUserState()
+      else {
+        setState(s => ({ ...s, liked: [], saved: [], following: [] }))
+        navigate('/login')
+      }
+    })
+  }, [navigate])
   useEffect(() => { if (!toast) return; const t = window.setTimeout(() => setToast(null), 2400); return () => window.clearTimeout(t) }, [toast])
 
   const requireSignIn = async () => {
@@ -60,9 +78,15 @@ function App() {
   }
   const addPost = (post: PromptPost) => { setState(s => ({ ...s, posts: [post, ...s.posts] })); setToast('Prompt published successfully') }
   const deletePost = (id: string) => { setState(s => ({ ...s, posts: s.posts.filter(p => p.id !== id) })); setToast('Post deleted') }
+  const signOut = async () => {
+    if (!supabase) return
+    const { error } = await supabase.auth.signOut()
+    if (error) setToast(error.message)
+    else navigate('/login')
+  }
 
   return <>
-    <AppShell query={query} setQuery={setQuery} menuOpen={menuOpen} setMenuOpen={setMenuOpen} />
+    <AppShell query={query} setQuery={setQuery} menuOpen={menuOpen} setMenuOpen={setMenuOpen} signOut={signOut} />
     <Routes>
       <Route path="/" element={<HomePage posts={viewPosts} query={query} toggleLike={toggleLike} toggleSave={toggleSave} copyPrompt={copyPrompt} />} />
       <Route path="/explore" element={<ExplorePage posts={viewPosts} query={query} setQuery={setQuery} toggleLike={toggleLike} toggleSave={toggleSave} copyPrompt={copyPrompt} />} />
@@ -74,8 +98,8 @@ function App() {
       <Route path="/dashboard" element={<AuthGate><DashboardPage posts={viewPosts} copied={state.copied} /></AuthGate>} />
       <Route path="/notifications" element={<AuthGate><NotificationsPage /></AuthGate>} />
       <Route path="/settings" element={<AuthGate><SettingsPage /></AuthGate>} />
-      <Route path="/login" element={<AuthPage mode="login" />} />
-      <Route path="/signup" element={<AuthPage mode="signup" />} />
+      <Route path="/login" element={isSupabaseConfigured ? <AuthPage mode="login" /> : <ConfigurationPage />} />
+      <Route path="/signup" element={isSupabaseConfigured ? <AuthPage mode="signup" /> : <ConfigurationPage />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
     <BottomNav />
@@ -107,7 +131,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
-function AppShell({ query, setQuery, menuOpen, setMenuOpen }: { query: string; setQuery: (v: string) => void; menuOpen: boolean; setMenuOpen: (v: boolean) => void }) {
+function AppShell({ query, setQuery, menuOpen, setMenuOpen, signOut }: { query: string; setQuery: (v: string) => void; menuOpen: boolean; setMenuOpen: (v: boolean) => void; signOut: () => void }) {
   return <header className="topbar">
     <div className="topbar-inner">
       <Link to="/" className="brand"><img src="/logo-mark.svg" alt="PromptBook" /><span>Prompt<span>Book</span></span></Link>
@@ -119,7 +143,7 @@ function AppShell({ query, setQuery, menuOpen, setMenuOpen }: { query: string; s
         <Link className="create-btn" to="/create"><Plus size={18}/> Create</Link>
         <Link className="icon-btn notification-btn" to="/notifications" aria-label="Notifications"><Bell size={19}/><i/></Link>
         <button className="avatar-button" onClick={() => setMenuOpen(!menuOpen)} aria-label="Profile menu"><span>SG</span><ChevronDown size={14}/></button>
-        {menuOpen && <div className="profile-menu"><Link to="/u/sandeep"><CircleUserRound/> Profile</Link><Link to="/saved"><Bookmark/> Saved</Link><Link to="/settings"><Settings/> Settings</Link><Link to="/login"><LogIn/> Sign in</Link></div>}
+        {menuOpen && <div className="profile-menu"><Link to="/u/sandeep"><CircleUserRound/> Profile</Link><Link to="/saved"><Bookmark/> Saved</Link><Link to="/settings"><Settings/> Settings</Link><button onClick={signOut}><LogIn/> Sign out</button></div>}
       </div>
       <button className="mobile-menu icon-btn" onClick={() => setMenuOpen(!menuOpen)}><Menu/></button>
     </div>
@@ -235,21 +259,21 @@ function CreatePage({ onCreate }: { onCreate: (p:PromptPost)=>void }) {
   const [title,setTitle]=useState(''); const [prompt,setPrompt]=useState(''); const [negativePrompt,setNegativePrompt]=useState(''); const [desc,setDesc]=useState(''); const [tool,setTool]=useState('ChatGPT'); const [category,setCategory]=useState('Photography'); const [tags,setTags]=useState(''); const [before,setBefore]=useState('https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=1200&q=80'); const [after,setAfter]=useState('https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=1200&q=80'); const [step,setStep]=useState(1); const [beforeFile,setBeforeFile]=useState<File|undefined>(); const [afterFile,setAfterFile]=useState<File|undefined>(); const [publishing,setPublishing]=useState(false); const nav=useNavigate();
   const file=(setter:(v:string)=>void, setFile:(f?:File)=>void)=>(e:React.ChangeEvent<HTMLInputElement>)=>{const f=e.target.files?.[0];if(f){if(f.size>10*1024*1024){alert('Please choose an image under 10 MB.');return} setFile(f); setter(URL.createObjectURL(f))}}
   const valid=title.trim()&&prompt.trim()
-  const publish=async()=>{if(!valid){alert('Add a title and prompt before publishing.');return} if(isSupabaseConfigured && !afterFile){alert('Please upload the final AI result image before publishing.');setStep(1);return} setPublishing(true); if(isSupabaseConfigured){ try { const id=await createSupabasePost({title,description:desc,prompt,negativePrompt,tool,model:tool==='Midjourney'?'V7':'Latest',category,tags:tags.split(',').map(x=>x.trim()).filter(Boolean),beforeFile,afterFile}); setPublishing(false); nav(`/post/${id}`); return } catch(e){ setPublishing(false); alert(e instanceof Error?e.message:'Could not publish'); return } } const id=`local-${Date.now()}`; onCreate({id,title,description:desc||'A new PromptBook creation.',before,after,prompt,negativePrompt,tool,model:tool==='Midjourney'?'V7':'Latest',category,tags:tags.split(',').map(x=>x.trim()).filter(Boolean),likes:0,saves:0,copies:0,views:1,comments:0,remixes:0,createdAt:'just now',creator:{...seedCreators[0],username:'sandeep',name:'Sandeep Gaire',avatar:'SG'}}); nav(`/post/${id}`)}
+  const publish=async()=>{if(!valid){alert('Add a title and prompt before publishing.');return} if(!afterFile){alert('Please upload the final AI result image before publishing.');setStep(1);return} setPublishing(true); try { const id=await createSupabasePost({title,description:desc,prompt,negativePrompt,tool,model:tool==='Midjourney'?'V7':'Latest',category,tags:tags.split(',').map(x=>x.trim()).filter(Boolean),beforeFile,afterFile}); setPublishing(false); nav(`/post/${id}`) } catch(e){ setPublishing(false); alert(e instanceof Error?e.message:'Could not publish') }}
   return <main className="container page create-page"><div className="page-heading"><div><span className="section-kicker">Create</span><h1>Publish a prompt</h1><p>Show the result, share the exact prompt, and let others remix your workflow.</p></div><span className="draft-chip"><Activity size={15}/> Autosave ready</span></div><div className="stepper">{['Images','Prompt','Details','Publish'].map((x,i)=><button key={x} className={step===i+1?'active':''} onClick={()=>setStep(i+1)}><span>{i+1}</span>{x}</button>)}</div><div className="create-layout"><div className="form-card">{step===1&&<><FieldLabel title="Before image" hint="Optional"/><ImageUpload value={before} setValue={setBefore} onFile={file(setBefore,setBeforeFile)} label="Original / before"/><FieldLabel title="After image" hint="Required"/><ImageUpload value={after} setValue={setAfter} onFile={file(setAfter,setAfterFile)} label="AI result / after"/><div className="form-nav"><span/> <button className="primary-btn" onClick={()=>setStep(2)}>Continue <ArrowRight size={17}/></button></div></>}{step===2&&<><FieldLabel title="Prompt title"/><input className="text-input" value={title} onChange={e=>setTitle(e.target.value)} placeholder="e.g. Cinematic motorcycle portrait" maxLength={100}/><FieldLabel title="Exact prompt"/><textarea className="prompt-textarea" value={prompt} onChange={e=>setPrompt(e.target.value)} placeholder="Paste the exact prompt you used..." rows={10}/><div className="char-count">{prompt.length}/5000</div><FieldLabel title="Negative prompt" hint="Optional"/><textarea className="text-input" value={negativePrompt} onChange={e=>setNegativePrompt(e.target.value)} placeholder="What should the model avoid?" rows={4}/><div className="form-nav"><button className="secondary-btn" onClick={()=>setStep(1)}><ArrowLeft size={17}/> Back</button><button className="primary-btn" onClick={()=>setStep(3)}>Continue <ArrowRight size={17}/></button></div></>}{step===3&&<><FieldLabel title="AI platform"/><div className="choice-grid">{['ChatGPT','Gemini','Midjourney','Flux','Leonardo AI','Other'].map(x=><button className={tool===x?'selected':''} key={x} onClick={()=>setTool(x)}><Sparkles size={15}/>{x}</button>)}</div><FieldLabel title="Category"/><select className="text-input" value={category} onChange={e=>setCategory(e.target.value)}>{['Photography','Portrait','Landscape','Product','Art','Automotive','Writing'].map(x=><option key={x}>{x}</option>)}</select><FieldLabel title="Tags" hint="Comma separated"/><input className="text-input" value={tags} onChange={e=>setTags(e.target.value)} placeholder="cinematic, dslr, natural, portrait"/><FieldLabel title="Description" hint="Optional"/><textarea className="text-input" value={desc} onChange={e=>setDesc(e.target.value)} placeholder="What makes this prompt useful?" rows={4}/><div className="form-nav"><button className="secondary-btn" onClick={()=>setStep(2)}><ArrowLeft size={17}/> Back</button><button className="primary-btn" onClick={()=>setStep(4)}>Preview <Eye size={17}/></button></div></>}{step===4&&<><div className="publish-preview"><div className="preview-images"><img src={before} alt="Before"/><img src={after} alt="After"/></div><span className="eyebrow">{category} · {tool}</span><h2>{title||'Untitled prompt'}</h2><p>{desc||'No description added.'}</p><div className="prompt-box"><div className="prompt-box-head"><span><Sparkles size={15}/> Prompt</span></div><p>{prompt||'Your exact prompt will appear here.'}</p></div></div><div className="form-nav"><button className="secondary-btn" onClick={()=>setStep(3)}><ArrowLeft size={17}/> Edit</button><button className="primary-btn" onClick={publish}><Upload size={17}/> {publishing?'Publishing...':'Publish prompt'}</button></div></>}</div><aside className="creation-tips"><div className="tips-icon"><Zap/></div><h3>Make your prompt useful</h3><ul><li><Check/> Keep the exact prompt, not a summary.</li><li><Check/> Show the real before/after when possible.</li><li><Check/> Add model + tool so others can reproduce it.</li><li><Check/> Explain one small trick that improved the result.</li></ul><div className="privacy-note"><ShieldCheck size={17}/><span>Images are only public when you publish a public post.</span></div></aside></div></main>
 }
 
 function FieldLabel({title,hint}:{title:string;hint?:string}) { return <div className="field-label"><b>{title}</b>{hint&&<span>{hint}</span>}</div> }
 function ImageUpload({value,setValue,onFile,label}:{value:string;setValue:(v:string)=>void;onFile:(e:React.ChangeEvent<HTMLInputElement>)=>void;label:string}) { return <div className="upload-wrap"><label className="upload-card"><input type="file" accept="image/png,image/jpeg,image/webp" onChange={onFile}/>{value?<><img src={value} alt={label}/><span className="upload-overlay"><Upload size={17}/> Replace image</span></>:<span><ImageIcon size={28}/><b>Drop an image here</b><small>PNG, JPG or WEBP · max 10 MB</small></span>}</label>{value&&<button className="remove-upload" onClick={()=>setValue('')}><X size={15}/> Remove</button>}</div> }
 
-function ProfilePage({ posts, following, follow, toggleLike, toggleSave, copyPrompt }: PageActions & { posts:PromptPost[]; following:string[]; follow:(id:string)=>void; }) { const {username}=useParams(); const creator=posts.find(p=>p.creator.username===username)?.creator ?? {...seedCreators[0],username:username||'sandeep',name:username==='sandeep'?'Sandeep Gaire':'PromptBook Creator',avatar:username==='sandeep'?'SG':'PB'}; const own=creator.username==='sandeep'; const creatorPosts=posts.filter(p=>p.creator.username===creator.username); return <main className="container page"><section className="profile-hero"><div className="profile-avatar">{creator.avatar}</div><div className="profile-main"><div className="profile-name"><div><span className="section-kicker">Creator profile</span><h1>{creator.name}</h1><p>@{creator.username}</p></div>{!own&&<button className="primary-btn" onClick={()=>follow(creator.id)}><UserPlus size={17}/>{following.includes(creator.id)?'Following':'Follow'}</button>}</div><p className="bio">{creator.bio}</p><div className="profile-stats"><Stat icon={<ImageIcon/>} value={creator.posts} label="Posts"/><Stat icon={<Users/>} value={creator.followers} label="Followers"/><Stat icon={<UserPlus/>} value={creator.following} label="Following"/></div></div></section><div className="profile-tabs"><button className="active">Posts</button><button>Collections</button><button>About</button></div><PostGrid posts={creatorPosts} toggleLike={toggleLike} toggleSave={toggleSave} copyPrompt={copyPrompt}/></main> }
+function ProfilePage({ posts, following, follow, toggleLike, toggleSave, copyPrompt }: PageActions & { posts:PromptPost[]; following:string[]; follow:(id:string)=>void; }) { const {username}=useParams(); const creator=posts.find(p=>p.creator.username===username)?.creator ?? {...localCreator,username:username||'creator',name:username||'PromptBook Creator'}; const own=creator.username===username; const creatorPosts=posts.filter(p=>p.creator.username===creator.username); return <main className="container page"><section className="profile-hero"><div className="profile-avatar">{creator.avatar}</div><div className="profile-main"><div className="profile-name"><div><span className="section-kicker">Creator profile</span><h1>{creator.name}</h1><p>@{creator.username}</p></div>{!own&&<button className="primary-btn" onClick={()=>follow(creator.id)}><UserPlus size={17}/>{following.includes(creator.id)?'Following':'Follow'}</button>}</div><p className="bio">{creator.bio}</p><div className="profile-stats"><Stat icon={<ImageIcon/>} value={creator.posts} label="Posts"/><Stat icon={<Users/>} value={creator.followers} label="Followers"/><Stat icon={<UserPlus/>} value={creator.following} label="Following"/></div></div></section><div className="profile-tabs"><button className="active">Posts</button><button>Collections</button><button>About</button></div><PostGrid posts={creatorPosts} toggleLike={toggleLike} toggleSave={toggleSave} copyPrompt={copyPrompt}/></main> }
 
 function SavedPage({ posts, saved, toggleSave, toggleLike, copyPrompt }: PageActions & { posts:PromptPost[]; saved:string[] }) { const list=posts.filter(p=>saved.includes(p.id)); return <main className="container page"><div className="page-heading"><div><span className="section-kicker">Library</span><h1>Your saved prompts</h1><p>Keep your best discoveries organized for later.</p></div><Link to="/explore" className="secondary-btn"><Compass size={17}/> Discover more</Link></div>{list.length?<PostGrid posts={list} toggleLike={toggleLike} toggleSave={toggleSave} copyPrompt={copyPrompt}/>:<EmptyState icon={<FolderHeart/>} title="Your library is empty" text="Save prompts you want to try and they'll appear here." action={<Link to="/explore" className="primary-btn">Explore prompts</Link>}/>}</main> }
 
 function DashboardPage({posts,copied}:{posts:PromptPost[];copied:Record<string,number>}) { const exportData=()=>{const rows=[['Title','Creator','Tool','Copies','Likes','Saves','Views'],...posts.map(p=>[p.title,p.creator.username,p.tool,String(p.copies+(copied[p.id]??0)),String(p.likes),String(p.saves),String(p.views)])];const csv=rows.map(r=>r.map(v=>'"'+v.replaceAll('"','""')+'"').join(',')).join('\n');const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='promptbook-analytics.csv';a.click();URL.revokeObjectURL(url)}; const totalViews=posts.reduce((n,p)=>n+p.views,0), totalCopies=posts.reduce((n,p)=>n+p.copies+(copied[p.id]??0),0), totalLikes=posts.reduce((n,p)=>n+p.likes,0), totalSaves=posts.reduce((n,p)=>n+p.saves,0); return <main className="container page"><div className="page-heading"><div><span className="section-kicker">Creator studio</span><h1>Your analytics</h1><p>Understand which prompts people discover, save and copy.</p></div><button className="secondary-btn" onClick={exportData}><Download size={17}/> Export CSV</button></div><div className="metric-grid"><Metric title="Total views" value={totalViews} delta="+18.4%" icon={<Eye/>}/><Metric title="Prompt copies" value={totalCopies} delta="+24.8%" icon={<Copy/>}/><Metric title="Likes" value={totalLikes} delta="+12.1%" icon={<Heart/>}/><Metric title="Saves" value={totalSaves} delta="+9.7%" icon={<Bookmark/>}/></div><div className="dashboard-grid"><section className="chart-card"><div className="chart-head"><div><h3>Prompt copies</h3><span>Last 7 days</span></div><BarChart3/></div><div className="fake-chart"><div className="chart-line"/><div className="chart-bars">{[35,48,42,72,58,88,78].map((h,i)=><span key={i} style={{height:`${h}%`}}/>)}</div><div className="chart-labels"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div></div></section><section className="top-prompts"><div className="chart-head"><div><h3>Top prompts</h3><span>By copies</span></div><TrendingUp/></div>{[...posts].sort((a,b)=>b.copies-a.copies).slice(0,4).map((p,i)=><Link to={`/post/${p.id}`} className="top-row" key={p.id}><span className="rank">0{i+1}</span><img src={p.after} alt=""/><div><b>{p.title}</b><small>{p.tool} · {formatNumber(p.copies)} copies</small></div><ArrowRight size={16}/></Link>)}</section></div></main> }
 function Metric({title,value,delta,icon}:{title:string;value:number;delta:string;icon:React.ReactNode}) { return <div className="metric"><span className="metric-icon">{icon}</span><small>{title}</small><b>{formatNumber(value)}</b><em><TrendingUp size={13}/> {delta}</em></div> }
 
-function NotificationsPage(){const [items,setItems]=useState<NotificationItem[]>(seedNotifications); const mark=()=>setItems(items.map(n=>({...n,read:true}))); return <main className="container page narrow"><div className="page-heading"><div><span className="section-kicker">Activity</span><h1>Notifications</h1><p>Keep up with the conversations around your prompts.</p></div><button className="text-btn" onClick={mark}>Mark all read</button></div><div className="notification-list">{items.map(n=><div className={`notification ${n.read?'':'unread'}`} key={n.id}><span className={`notif-icon ${n.type}`}><Bell size={17}/></span><div><p>{n.text}</p><small>{n.time}</small></div>{!n.read&&<i/>}</div>)}</div></main>}
+function NotificationsPage(){const [items,setItems]=useState<NotificationItem[]>(localNotifications); const mark=()=>setItems(items.map(n=>({...n,read:true}))); return <main className="container page narrow"><div className="page-heading"><div><span className="section-kicker">Activity</span><h1>Notifications</h1><p>Keep up with the conversations around your prompts.</p></div><button className="text-btn" onClick={mark}>Mark all read</button></div><div className="notification-list">{items.length ? items.map(n=><div className={`notification ${n.read?'':'unread'}`} key={n.id}><span className={`notif-icon ${n.type}`}><Bell size={17}/></span><div><p>{n.text}</p><small>{n.time}</small></div>{!n.read&&<i/>}</div>) : <EmptyState icon={<Bell/>} title="No notifications yet" text="Activity around your prompts will appear here."/>}</div></main>}
 
 function SettingsPage(){return <main className="container page narrow"><div className="page-heading"><div><span className="section-kicker">Account</span><h1>Settings</h1><p>Control your profile and PromptBook experience.</p></div></div><section className="settings-card"><Setting icon={<CircleUserRound/>} title="Profile" text="Update your name, username, avatar and bio."/><Setting icon={<Bell/>} title="Notifications" text="Choose which creator activity you want to receive."/><Setting icon={<ShieldCheck/>} title="Privacy" text="Manage public posts and account visibility."/><Setting icon={<Settings/>} title="Appearance" text="PromptBook uses a dark-first premium theme."/></section><div className="connection-card"><div><span className="status-dot"/><b>{isSupabaseConfigured?'Supabase connected':'Local mode active'}</b><p>{isSupabaseConfigured?'Your environment variables are configured.':'Add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY to connect your project.'}</p></div><code>{isSupabaseConfigured?'CONNECTED':'LOCAL'}</code></div></main>}
 function Setting({icon,title,text}:{icon:React.ReactNode;title:string;text:string}){return <div className="setting-row"><span>{icon}</span><div><b>{title}</b><p>{text}</p></div><ArrowRight/></div>}
@@ -259,6 +283,8 @@ function AuthPage({mode}:{mode:'login'|'signup'}) { const [email,setEmail]=useSt
 function Feature({icon,title,text}:{icon:React.ReactNode;title:string;text:string}){return <div className="feature"><span>{icon}</span><div><b>{title}</b><p>{text}</p></div></div>}
 function EmptyState({icon,title,text,action}:{icon:React.ReactNode;title:string;text:string;action?:React.ReactNode}){return <div className="empty-state"><span>{icon}</span><h3>{title}</h3><p>{text}</p>{action}</div>}
 function NotFound(){return <main className="container page"><EmptyState icon={<Compass/>} title="Page not found" text="The page you requested does not exist." action={<Link to="/" className="primary-btn">Back home</Link>}/></main>}
+
+function ConfigurationPage(){return <main className="auth-page"><div className="auth-card"><div className="auth-head"><span className="eyebrow"><Sparkles size={14}/> Account access</span><h1>Connect PromptBook.</h1><p>Add your Supabase project settings to enable authentication, publishing and private workspace features.</p></div><Link to="/" className="primary-btn">Back to prompts</Link></div></main>}
 
 type PageActions={toggleLike:(id:string)=>void;toggleSave:(id:string)=>void;copyPrompt:(p:PromptPost)=>void}
 

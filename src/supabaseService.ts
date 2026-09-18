@@ -1,6 +1,23 @@
 import type { PromptPost } from './types'
 import { supabase } from './lib'
 
+export async function fetchUserState(): Promise<{ liked: string[]; saved: string[]; following: string[] }> {
+  if (!supabase) return { liked: [], saved: [], following: [] }
+  const user = (await supabase.auth.getUser()).data.user
+  if (!user) return { liked: [], saved: [], following: [] }
+  const [{ data: likes, error: likesError }, { data: saves, error: savesError }, { data: follows, error: followsError }] = await Promise.all([
+    supabase.from('likes').select('post_id').eq('user_id', user.id),
+    supabase.from('saves').select('post_id').eq('user_id', user.id),
+    supabase.from('follows').select('following_id').eq('follower_id', user.id),
+  ])
+  if (likesError || savesError || followsError) throw likesError ?? savesError ?? followsError
+  return {
+    liked: (likes ?? []).map(row => row.post_id),
+    saved: (saves ?? []).map(row => row.post_id),
+    following: (follows ?? []).map(row => row.following_id),
+  }
+}
+
 export async function fetchPublicPosts(): Promise<PromptPost[]> {
   if (!supabase) return []
   const { data, error } = await supabase
@@ -64,12 +81,14 @@ export async function createSupabasePost(input: { title:string; description:stri
   const { data: post, error } = await supabase.from('posts').insert({ user_id:user.id, title:input.title, description:input.description, prompt:input.prompt, negative_prompt:input.negativePrompt, ai_tool_id:tool?.id ?? null, ai_model:input.model, category_id:category?.id ?? null, visibility:'public', post_type: input.beforeFile ? 'ai_edit' : 'ai_generation', status:'published' }).select('id').single()
   if (error || !post) throw error ?? new Error('Could not create post.')
   const files = [{ file: input.beforeFile, type:'before' }, { file:input.afterFile, type:'after' }].filter(x=>x.file) as {file:File;type:string}[]
+  const uploadedPaths: string[] = []
   try {
     for (const item of files) {
       const ext = item.file.name.split('.').pop()?.toLowerCase() || 'webp'
       const path = `${user.id}/${post.id}/${item.type}.${ext}`
       const upload = await supabase.storage.from('post-images').upload(path, item.file, { upsert:true, contentType:item.file.type || 'image/webp' })
       if (upload.error) throw upload.error
+      uploadedPaths.push(path)
       const { error: imageError } = await supabase.from('post_images').insert({ post_id:post.id, image_type:item.type, storage_path:path, file_size:item.file.size })
       if (imageError) throw imageError
     }
@@ -81,6 +100,7 @@ export async function createSupabasePost(input: { title:string; description:stri
       await supabase.from('post_tags').upsert({post_id:post.id,tag_id:tag.id})
     }
   } catch (e) {
+    if (uploadedPaths.length) await supabase.storage.from('post-images').remove(uploadedPaths)
     await supabase.from('posts').delete().eq('id',post.id)
     throw e
   }

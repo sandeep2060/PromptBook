@@ -20,7 +20,7 @@ Open the URL shown by Vite (normally http://localhost:5173).
 5. Create the Storage buckets/policies described in that SQL file.
 6. Restart `npm run dev`.
 
-Without Supabase environment variables, the app intentionally runs in **local demo mode** so you can review the full UI and interactions before connecting your database.
+Supabase is required for authentication, publishing, private workspace features, and user activity. Without the environment variables, the public shell remains available but account actions show a clear configuration message instead of simulating a successful login.
 
 ## Build verification
 
@@ -32,4 +32,19 @@ npm run build
 
 PromptBook is designed around one loop: discover → compare before/after → read prompt → copy → remix → publish.
 
-The UI includes responsive masonry discovery, before/after slider, prompt viewer, copy metrics, favorites, likes, creator profiles, collections, create/edit flow, notifications, analytics dashboard and settings.
+The UI includes responsive discovery, before/after comparison, prompt viewing, copy metrics, favorites, likes, creator profiles, notifications, analytics foundation and settings. The bundled demo dataset and demo image assets have been removed; public content comes from Supabase.
+
+## Environment variables
+
+Create a local `.env` file from `.env.example`:
+
+```env
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+```
+
+Only the publishable Supabase key belongs in the browser. Never expose a service-role key.
+
+## Deployment
+
+For Vercel, configure the two `VITE_SUPABASE_*` variables in the project settings, deploy the repository, and run `npm run build` locally before publishing. The included `vercel.json` handles SPA fallback routing.
