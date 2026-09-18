@@ -163,6 +163,9 @@ kbd{border:1px solid #ddd9d1;background:#faf9f6;border-radius:5px;padding:2px 5p
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
 .auth-message{margin-top:12px;padding:9px 10px;border-radius:8px;background:#f7f3ea;border:1px solid #e6dfd3;color:#6c5b42;font-size:9px;line-height:1.5}
 .setting-row{cursor:default}
+.compare{touch-action:none}
+.after-clip{left:0;right:auto}
+.after-clip img{left:0;right:auto;width:auto;min-width:100%;pointer-events:none}
 /* Intentional structural hooks kept for the React components. */
 .create-page{--page-accent:var(--accent)}
 .detail-tags{margin-bottom:2px}
