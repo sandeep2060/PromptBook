@@ -6,7 +6,6 @@ import {
   LogIn, Menu, MessageCircle, MoreHorizontal, Plus, Search, Send, Settings, Share2, Sparkles, Star,
   Tag, TrendingUp, Upload, UserPlus, Users, X, Zap, BarChart3, ShieldCheck, Github, Mail
 } from 'lucide-react'
-import { seedNotifications, seedPosts, seedCreators } from './seed'
 import type { NotificationItem, PromptPost, Sort, Tab } from './types'
 import { formatNumber, isSupabaseConfigured, supabase } from './lib'
 import { fetchPublicPosts, recordCopy, toggleFollow as dbFollow, toggleLike as dbLike, toggleSave as dbSave, createSupabasePost } from './supabaseService'
@@ -14,14 +13,17 @@ import { fetchPublicPosts, recordCopy, toggleFollow as dbFollow, toggleLike as d
 const storageKey = 'promptbook-app-state-v1'
 
 type LocalState = { posts: PromptPost[]; liked: string[]; saved: string[]; copied: Record<string, number>; following: string[]; comments: Record<string, string[]> }
-const initialLocalState: LocalState = { posts: seedPosts, liked: [], saved: [], copied: {}, following: [], comments: {} }
+const initialLocalState: LocalState = { posts: [], liked: [], saved: [], copied: {}, following: [], comments: {} }
+const fallbackCreator = { id: 'current-user', username: 'creator', name: 'PromptBook Creator', avatar: 'PB', bio: '', followers: 0, following: 0, posts: 0 }
+const seedCreators = [fallbackCreator]
+const seedNotifications: NotificationItem[] = []
 
 function loadState(): LocalState {
   try {
     const raw = localStorage.getItem(storageKey)
     if (!raw) return initialLocalState
     const parsed = JSON.parse(raw) as LocalState
-    return { ...initialLocalState, ...parsed, posts: parsed.posts?.length ? parsed.posts : seedPosts }
+    return { ...initialLocalState, ...parsed, posts: parsed.posts ?? [] }
   } catch { return initialLocalState }
 }
 
@@ -30,16 +32,25 @@ function App() {
   const [query, setQuery] = useState('')
   const [toast, setToast] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  const navigate = useNavigate()
   const viewPosts = useMemo(() => state.posts.map(p => ({ ...p, liked: state.liked.includes(p.id), saved: state.saved.includes(p.id), likes: p.likes + (state.liked.includes(p.id) ? 1 : 0), saves: p.saves + (state.saved.includes(p.id) ? 1 : 0) })), [state.posts, state.liked, state.saved])
 
   useEffect(() => { localStorage.setItem(storageKey, JSON.stringify(state)) }, [state])
   useEffect(() => { if (!isSupabaseConfigured) return; fetchPublicPosts().then(posts => setState(s => ({ ...s, posts }))).catch(() => setToast('Could not load Supabase posts')) }, [])
   useEffect(() => { if (!toast) return; const t = window.setTimeout(() => setToast(null), 2400); return () => window.clearTimeout(t) }, [toast])
 
-  const toggleLike = async (id: string) => { const liked = state.liked.includes(id); setState(s => ({ ...s, liked: liked ? s.liked.filter(x => x !== id) : [...s.liked, id] })); if (isSupabaseConfigured) { try { await dbLike(id, liked) } catch (e) { setState(s => ({ ...s, liked: liked ? [...s.liked, id] : s.liked.filter(x => x !== id) })); setToast(e instanceof Error ? e.message : 'Unable to update like') } } }
-  const toggleSave = async (id: string) => { const saved = state.saved.includes(id); setState(s => ({ ...s, saved: saved ? s.saved.filter(x => x !== id) : [...s.saved, id] })); if (isSupabaseConfigured) { try { await dbSave(id, saved) } catch (e) { setState(s => ({ ...s, saved: saved ? [...s.saved, id] : s.saved.filter(x => x !== id) })); setToast(e instanceof Error ? e.message : 'Unable to update save') } } }
-  const follow = async (id: string) => { const following = state.following.includes(id); setState(s => ({ ...s, following: following ? s.following.filter(x => x !== id) : [...s.following, id] })); if (isSupabaseConfigured) { try { await dbFollow(id, following) } catch (e) { setState(s => ({ ...s, following: following ? [...s.following, id] : s.following.filter(x => x !== id) })); setToast(e instanceof Error ? e.message : 'Unable to follow creator') } } }
+  const requireSignIn = async () => {
+    const user = supabase ? (await supabase.auth.getUser()).data.user : null
+    if (user) return true
+    setToast('Please sign in to continue')
+    navigate('/login')
+    return false
+  }
+  const toggleLike = async (id: string) => { if (!await requireSignIn()) return; const liked = state.liked.includes(id); setState(s => ({ ...s, liked: liked ? s.liked.filter(x => x !== id) : [...s.liked, id] })); try { await dbLike(id, liked) } catch (e) { setState(s => ({ ...s, liked: liked ? [...s.liked, id] : s.liked.filter(x => x !== id) })); setToast(e instanceof Error ? e.message : 'Unable to update like') } }
+  const toggleSave = async (id: string) => { if (!await requireSignIn()) return; const saved = state.saved.includes(id); setState(s => ({ ...s, saved: saved ? s.saved.filter(x => x !== id) : [...s.saved, id] })); try { await dbSave(id, saved) } catch (e) { setState(s => ({ ...s, saved: saved ? [...s.saved, id] : s.saved.filter(x => x !== id) })); setToast(e instanceof Error ? e.message : 'Unable to update save') } }
+  const follow = async (id: string) => { if (!await requireSignIn()) return; const following = state.following.includes(id); setState(s => ({ ...s, following: following ? s.following.filter(x => x !== id) : [...s.following, id] })); try { await dbFollow(id, following) } catch (e) { setState(s => ({ ...s, following: following ? [...s.following, id] : s.following.filter(x => x !== id) })); setToast(e instanceof Error ? e.message : 'Unable to follow creator') } }
   const copyPrompt = async (post: PromptPost) => {
+    if (!await requireSignIn()) return
     try { await navigator.clipboard.writeText(post.prompt) } catch {
       const area = document.createElement('textarea'); area.value = post.prompt; document.body.appendChild(area); area.select(); document.execCommand('copy'); area.remove()
     }
@@ -56,13 +67,13 @@ function App() {
       <Route path="/" element={<HomePage posts={viewPosts} query={query} toggleLike={toggleLike} toggleSave={toggleSave} copyPrompt={copyPrompt} />} />
       <Route path="/explore" element={<ExplorePage posts={viewPosts} query={query} setQuery={setQuery} toggleLike={toggleLike} toggleSave={toggleSave} copyPrompt={copyPrompt} />} />
       <Route path="/trending" element={<ExplorePage posts={viewPosts} query={query} setQuery={setQuery} initialSort="copies" toggleLike={toggleLike} toggleSave={toggleSave} copyPrompt={copyPrompt} />} />
-      <Route path="/create" element={<CreatePage onCreate={addPost} />} />
+      <Route path="/create" element={<AuthGate><CreatePage onCreate={addPost} /></AuthGate>} />
       <Route path="/post/:id" element={<PostPage posts={viewPosts} copied={state.copied} toggleLike={toggleLike} toggleSave={toggleSave} copyPrompt={copyPrompt} follow={follow} deletePost={deletePost} />} />
       <Route path="/u/:username" element={<ProfilePage posts={viewPosts} following={state.following} follow={follow} toggleLike={toggleLike} toggleSave={toggleSave} copyPrompt={copyPrompt} />} />
-      <Route path="/saved" element={<SavedPage posts={viewPosts} saved={state.saved} toggleSave={toggleSave} toggleLike={toggleLike} copyPrompt={copyPrompt} />} />
-      <Route path="/dashboard" element={<DashboardPage posts={viewPosts} copied={state.copied} />} />
-      <Route path="/notifications" element={<NotificationsPage />} />
-      <Route path="/settings" element={<SettingsPage />} />
+      <Route path="/saved" element={<AuthGate><SavedPage posts={viewPosts} saved={state.saved} toggleSave={toggleSave} toggleLike={toggleLike} copyPrompt={copyPrompt} /></AuthGate>} />
+      <Route path="/dashboard" element={<AuthGate><DashboardPage posts={viewPosts} copied={state.copied} /></AuthGate>} />
+      <Route path="/notifications" element={<AuthGate><NotificationsPage /></AuthGate>} />
+      <Route path="/settings" element={<AuthGate><SettingsPage /></AuthGate>} />
       <Route path="/login" element={<AuthPage mode="login" />} />
       <Route path="/signup" element={<AuthPage mode="signup" />} />
       <Route path="*" element={<NotFound />} />
@@ -70,6 +81,30 @@ function App() {
     <BottomNav />
     {toast && <div className="toast"><Check size={16} />{toast}</div>}
   </>
+}
+
+function AuthGate({ children }: { children: React.ReactNode }) {
+  const navigate = useNavigate()
+  const [checking, setChecking] = useState(true)
+  const [authenticated, setAuthenticated] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    if (!supabase) {
+      navigate('/login', { replace: true })
+      return () => { active = false }
+    }
+    supabase.auth.getUser().then(({ data }) => {
+      if (!active) return
+      if (data.user) setAuthenticated(true)
+      else navigate('/login', { replace: true })
+      setChecking(false)
+    })
+    return () => { active = false }
+  }, [navigate])
+
+  if (checking || !authenticated) return null
+  return <>{children}</>
 }
 
 function AppShell({ query, setQuery, menuOpen, setMenuOpen }: { query: string; setQuery: (v: string) => void; menuOpen: boolean; setMenuOpen: (v: boolean) => void }) {
@@ -123,7 +158,7 @@ function HomePage({ posts, query, toggleLike, toggleSave, copyPrompt }: PageActi
     <section className="container creator-strip">
       <div className="section-head"><div><span className="section-kicker">Featured creators</span><h2>Top operators this week.</h2></div></div>
       <div className="creator-list">
-        {seedCreators.map((creator) => (
+        {[...new Map(posts.map((post) => [post.creator.id, post.creator])).values()].map((creator) => (
           <Link key={creator.id} to={`/u/${creator.username}`} className="creator-card">
             <div className="creator-card-header">
               <span className="avatar-sm">{creator.avatar}</span>
