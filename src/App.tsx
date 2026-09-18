@@ -31,9 +31,11 @@ function App() {
   const [query, setQuery] = useState('')
   const [toast, setToast] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [authenticated, setAuthenticated] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
   const isAuthRoute = location.pathname === '/login' || location.pathname === '/signup'
+  const showWorkspace = authenticated && !isAuthRoute
   const viewPosts = useMemo(() => state.posts.map(p => ({ ...p, liked: state.liked.includes(p.id), saved: state.saved.includes(p.id) })), [state.posts, state.liked, state.saved])
 
   useEffect(() => { localStorage.setItem(storageKey, JSON.stringify(state)) }, [state])
@@ -48,14 +50,16 @@ function App() {
         setToast('Could not restore your activity')
       }
     }
-    hydrateUserState()
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) hydrateUserState()
-      else {
-        setState(s => ({ ...s, liked: [], saved: [], following: [] }))
-        navigate('/login')
-      }
+    supabase.auth.getSession().then(({ data }) => {
+      setAuthenticated(Boolean(data.session))
+      if (data.session) hydrateUserState()
     })
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthenticated(Boolean(session))
+      if (session) hydrateUserState()
+      else setState(s => ({ ...s, liked: [], saved: [], following: [] }))
+    })
+    return () => data.subscription.unsubscribe()
   }, [navigate])
   useEffect(() => { if (!toast) return; const t = window.setTimeout(() => setToast(null), 2400); return () => window.clearTimeout(t) }, [toast])
 
@@ -87,10 +91,10 @@ function App() {
     else navigate('/login')
   }
 
-  return <>
-    {!isAuthRoute && <AppShell query={query} setQuery={setQuery} menuOpen={menuOpen} setMenuOpen={setMenuOpen} signOut={signOut} />}
+  return <div className={showWorkspace ? 'app-root workspace-mode' : 'app-root public-mode'}>
+    {showWorkspace && <AppShell query={query} setQuery={setQuery} menuOpen={menuOpen} setMenuOpen={setMenuOpen} signOut={signOut} />}
     <Routes>
-      <Route path="/" element={<HomePage posts={viewPosts} query={query} toggleLike={toggleLike} toggleSave={toggleSave} copyPrompt={copyPrompt} />} />
+      <Route path="/" element={showWorkspace ? <HomePage posts={viewPosts} query={query} toggleLike={toggleLike} toggleSave={toggleSave} copyPrompt={copyPrompt} /> : <PublicLanding />} />
       <Route path="/explore" element={<ExplorePage posts={viewPosts} query={query} setQuery={setQuery} toggleLike={toggleLike} toggleSave={toggleSave} copyPrompt={copyPrompt} />} />
       <Route path="/trending" element={<ExplorePage posts={viewPosts} query={query} setQuery={setQuery} initialSort="copies" toggleLike={toggleLike} toggleSave={toggleSave} copyPrompt={copyPrompt} />} />
       <Route path="/create" element={<AuthGate><CreatePage onCreate={addPost} /></AuthGate>} />
@@ -104,9 +108,9 @@ function App() {
       <Route path="/signup" element={isSupabaseConfigured ? <AuthPage mode="signup" /> : <ConfigurationPage />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
-    {!isAuthRoute && <BottomNav />}
+    {showWorkspace && <BottomNav />}
     {toast && <div className="toast"><Check size={16} />{toast}</div>}
-  </>
+  </div>
 }
 
 function AuthGate({ children }: { children: React.ReactNode }) {
@@ -159,6 +163,23 @@ function AppShell({ query, setQuery, menuOpen, setMenuOpen, signOut }: { query: 
 }
 
 function BottomNav() { return <nav className="bottom-nav"><NavLink to="/"><Home/><span>Home</span></NavLink><NavLink to="/explore"><Compass/><span>Explore</span></NavLink><Link to="/create" className="bottom-create"><Plus/></Link><NavLink to="/notifications"><Bell/><span>Alerts</span></NavLink><NavLink to="/u/sandeep"><CircleUserRound/><span>Profile</span></NavLink></nav> }
+
+function PublicLanding() {
+  return <main className="public-landing">
+    <nav className="public-nav container"><Link to="/" className="brand"><img src="/logo-mark.svg" alt="PromptBook"/><span>Prompt<span>Book</span></span></Link><div className="public-nav-links"><Link to="/explore">Explore prompts</Link><a href="#how-it-works">How it works</a></div><div className="public-nav-actions"><Link to="/login" className="public-login">Log in</Link><Link to="/signup" className="primary-btn">Get started <ArrowRight size={16}/></Link></div></nav>
+    <section className="public-hero container"><div className="public-hero-copy"><span className="eyebrow"><Sparkles size={14}/> A home for better prompts</span><h1>Turn good ideas into <em>repeatable work.</em></h1><p>PromptBook is where people discover useful AI prompts, understand how they work, and build a personal library of ideas worth coming back to.</p><div className="public-hero-actions"><Link to="/signup" className="primary-btn">Start building your library <ArrowRight size={17}/></Link><Link to="/explore" className="secondary-btn">Browse the community</Link></div><div className="public-proof"><span><Check/> Save what works</span><span><Check/> Learn from real examples</span><span><Check/> Share your process</span></div></div><PublicWorkflowGraphic/></section>
+    <section id="how-it-works" className="public-story"><div className="container"><div className="public-section-intro"><span className="section-kicker">Why PromptBook</span><h2>Less digging through old chats. More time making.</h2><p>Every prompt has a story. PromptBook keeps the wording, context, result, and creator together so you can use the idea with confidence.</p></div><div className="public-feature-grid"><PublicFeature number="01" icon={<Compass/>} title="Discover the right starting point" text="Search a focused community of prompts for writing, design, coding, research, and everyday creative work."/><PublicFeature number="02" icon={<Copy/>} title="See what actually worked" text="Read the exact prompt and inspect the result instead of relying on a vague description or a screenshot."/><PublicFeature number="03" icon={<FolderHeart/>} title="Build a library that feels like yours" text="Save useful work, follow thoughtful creators, and return to your best ideas whenever you need them."/></div></div></section>
+    <section className="public-callout container"><div><span className="section-kicker">Start with curiosity</span><h2>Your next useful prompt is probably closer than you think.</h2></div><Link to="/explore" className="secondary-btn">Explore PromptBook <ArrowRight size={16}/></Link></section>
+  </main>
+}
+
+function PublicWorkflowGraphic() {
+  return <div className="public-graphic" aria-label="PromptBook workflow preview"><div className="graphic-orbit orbit-one"/><div className="graphic-orbit orbit-two"/><div className="graphic-card graphic-main"><div className="graphic-card-top"><span className="graphic-dot"/><small>Prompt workspace</small><MoreHorizontal size={16}/></div><div className="graphic-lines"><i/><i/><i/><i/></div><div className="graphic-result"><Sparkles size={16}/><span>Clearer result, less guessing</span></div></div><div className="graphic-card graphic-note"><Bookmark size={15}/><div><b>Saved for later</b><small>Portrait lighting study</small></div></div><div className="graphic-card graphic-copy"><Copy size={15}/><b>Copy exact prompt</b></div></div>
+}
+
+function PublicFeature({ number, icon, title, text }: { number: string; icon: React.ReactNode; title: string; text: string }) {
+  return <article className="public-feature"><div className="public-feature-top"><span>{number}</span><span className="public-feature-icon">{icon}</span></div><h3>{title}</h3><p>{text}</p></article>
+}
 
 function HomePage({ posts, query, toggleLike, toggleSave, copyPrompt }: PageActions & { posts: PromptPost[]; query: string }) {
   const [tab, setTab] = useState<Tab>('for-you')
