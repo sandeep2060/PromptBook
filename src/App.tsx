@@ -92,7 +92,7 @@ function App() {
   }
 
   return <div className={showWorkspace ? 'app-root workspace-mode' : 'app-root public-mode'}>
-    {showWorkspace && <AppShell query={query} setQuery={setQuery} menuOpen={menuOpen} setMenuOpen={setMenuOpen} signOut={signOut} />}
+    {showWorkspace && <AppShell query={query} setQuery={setQuery} menuOpen={menuOpen} setMenuOpen={setMenuOpen} signOut={signOut} authenticated={authenticated} />}
     <Routes>
       <Route path="/" element={showWorkspace ? <HomePage posts={viewPosts} query={query} toggleLike={toggleLike} toggleSave={toggleSave} copyPrompt={copyPrompt} /> : <PublicLanding />} />
       <Route path="/explore" element={<ExplorePage posts={viewPosts} query={query} setQuery={setQuery} toggleLike={toggleLike} toggleSave={toggleSave} copyPrompt={copyPrompt} />} />
@@ -137,7 +137,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
-function AppShell({ query, setQuery, menuOpen, setMenuOpen, signOut }: { query: string; setQuery: (v: string) => void; menuOpen: boolean; setMenuOpen: (v: boolean) => void; signOut: () => void }) {
+function AppShell({ query, setQuery, menuOpen, setMenuOpen, signOut, authenticated }: { query: string; setQuery: (v: string) => void; menuOpen: boolean; setMenuOpen: (v: boolean) => void; signOut: () => void; authenticated: boolean }) {
   return <>
     <aside className="app-sidebar">
       <Link to="/" className="brand"><img src="/logo-mark.svg" alt="PromptBook" /><span>Prompt<span>Book</span></span></Link>
@@ -151,10 +151,7 @@ function AppShell({ query, setQuery, menuOpen, setMenuOpen, signOut }: { query: 
         <div className="mobile-brand"><Link to="/" className="brand"><img src="/logo-mark.svg" alt="PromptBook" /><span>Prompt<span>Book</span></span></Link></div>
         <div className="nav-search"><Search size={17}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search prompts, creators, tags..."/><kbd>⌘ K</kbd></div>
         <div className="nav-actions">
-          <Link className="create-btn" to="/create"><Plus size={18}/> Create</Link>
-          <Link className="icon-btn notification-btn" to="/notifications" aria-label="Notifications"><Bell size={19}/><i/></Link>
-          <button className="avatar-button" onClick={() => setMenuOpen(!menuOpen)} aria-label="Profile menu"><span>SG</span><ChevronDown size={14}/></button>
-          {menuOpen && <div className="profile-menu"><Link to="/u/sandeep"><CircleUserRound/> Profile</Link><Link to="/saved"><Bookmark/> Saved</Link><Link to="/settings"><Settings/> Settings</Link><button onClick={signOut}><LogIn/> Sign out</button></div>}
+          {authenticated ? <><Link className="create-btn" to="/create"><Plus size={18}/> Create</Link><Link className="icon-btn notification-btn" to="/notifications" aria-label="Notifications"><Bell size={19}/><i/></Link><button className="avatar-button" onClick={() => setMenuOpen(!menuOpen)} aria-label="Profile menu"><span>SG</span><ChevronDown size={14}/></button>{menuOpen && <div className="profile-menu"><Link to="/u/sandeep"><CircleUserRound/> Profile</Link><Link to="/saved"><Bookmark/> Saved</Link><Link to="/settings"><Settings/> Settings</Link><button onClick={signOut}><LogIn/> Sign out</button></div>}</> : <><Link className="public-login" to="/login">Log in</Link><Link className="create-btn" to="/signup">Get started <ArrowRight size={16}/></Link></>}
         </div>
       </div>
       <div className={`mobile-drawer ${menuOpen ? 'open' : ''}`}><div className="mobile-drawer-head"><b>PromptBook</b><button className="icon-btn" onClick={() => setMenuOpen(false)} aria-label="Close navigation"><X/></button></div><nav><NavLink onClick={() => setMenuOpen(false)} to="/"><Home/> Home</NavLink><NavLink onClick={() => setMenuOpen(false)} to="/explore"><Compass/> Discover</NavLink><NavLink onClick={() => setMenuOpen(false)} to="/trending"><Flame/> Trending</NavLink><NavLink onClick={() => setMenuOpen(false)} to="/dashboard"><BarChart3/> Analytics</NavLink><NavLink onClick={() => setMenuOpen(false)} to="/saved"><Bookmark/> Saved prompts</NavLink><NavLink onClick={() => setMenuOpen(false)} to="/settings"><Settings/> Settings</NavLink></nav></div>
