@@ -1,6 +1,17 @@
 import { createClient } from '@supabase/supabase-js'
 
-export const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined
+const configuredSupabaseUrl = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim().replace(/\/+$/, '')
+function isValidSupabaseProjectUrl(value: string | undefined): value is string {
+  if (!value) return false
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' && url.pathname === '' && !url.search && !url.hash
+  } catch {
+    return false
+  }
+}
+
+export const supabaseUrl = isValidSupabaseProjectUrl(configuredSupabaseUrl) ? configuredSupabaseUrl : undefined
 export const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseKey)
 export const supabase = isSupabaseConfigured ? createClient(supabaseUrl!, supabaseKey!) : null
